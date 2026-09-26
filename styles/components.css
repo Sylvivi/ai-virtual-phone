@@ -1948,6 +1948,21 @@
   font-weight: 650;
 }
 
+.quick-action-shortcuts {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.quick-action-shortcut {
+  flex: 1;
+  min-height: 34px;
+  justify-content: center;
+  padding: 6px 4px;
+  text-align: center;
+  font-size: calc(11.5px*var(--app-text-scale,1));
+}
+
 .quick-action-option-list {
   display: flex;
   flex-direction: column;

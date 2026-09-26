@@ -46,6 +46,12 @@ function clampFloatingPosition(value: number, max: number): number {
     return Math.min(Math.max(12, value), max);
 }
 
+const QUICK_SETTINGS_SHORTCUTS: Array<{ mode: string; label: string }> = [
+    { mode: "api", label: "API 设置" },
+    { mode: "binding", label: "配置绑定" },
+    { mode: "identity", label: "用户身份" },
+];
+
 function itemName<T extends { id: string; name?: string }>(items: T[], id?: string): string {
     if (!id) return "";
     return items.find(item => item.id === id)?.name || "已删除的配置";
@@ -499,6 +505,22 @@ export function QuickActionFloat() {
                     </div>
 
                     <div className="quick-action-body">
+                        {/* Shortcuts: jump straight to settings sub-pages (reuses the mascot navigation event). */}
+                        <div className="quick-action-shortcuts" aria-label="直达设置">
+                            {QUICK_SETTINGS_SHORTCUTS.map(item => (
+                                <button
+                                    type="button"
+                                    key={item.mode}
+                                    className="quick-action-option quick-action-shortcut"
+                                    onClick={() => {
+                                        handleClose();
+                                        window.dispatchEvent(new CustomEvent("mascot-navigate", { detail: { app: "settings", mode: item.mode } }));
+                                    }}
+                                >
+                                    <span>{item.label}</span>
+                                </button>
+                            ))}
+                        </div>
                         <div className="quick-action-tabs" role="tablist" aria-label="绑定范围">
                             <button
                                 type="button"
