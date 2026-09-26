@@ -16,6 +16,7 @@ import {
     getCharacterBinding,
     loadApiConfigs,
     loadBindingConfig,
+    loadUserIdentities,
     loadWorldBooks,
     saveBindingConfig,
     setCharacterBinding,
@@ -23,6 +24,7 @@ import {
 import type { ApiConfig, BindingConfig, BindingSlot, WorldBookConfig } from "@/lib/settings-types";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
+import type { UserIdentity } from "@/components/settings/user-identity";
 
 type QuickScope = "global" | "character";
 type FloatingPosition = { left: number; top: number };
@@ -63,6 +65,7 @@ export function QuickActionFloat() {
     const [config, setConfig] = useState<BindingConfig>(EMPTY_BINDING_CONFIG);
     const [apiConfigs, setApiConfigs] = useState<ApiConfig[]>([]);
     const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
+    const [identities, setIdentities] = useState<UserIdentity[]>([]);
     const [characters, setCharacters] = useState<Character[]>([]);
     const [floatingPosition, setFloatingPosition] = useState<FloatingPosition | null>(null);
     const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
@@ -87,6 +90,7 @@ export function QuickActionFloat() {
         setConfig(loadBindingConfig());
         setApiConfigs(loadApiConfigs());
         setWorldBooks(loadWorldBooks());
+        setIdentities(loadUserIdentities());
         setCharacters(nextCharacters);
         setSelectedCharId(prev => {
             if (prev && nextCharacters.some(character => character.id === prev)) return prev;
@@ -227,6 +231,20 @@ export function QuickActionFloat() {
         persistConfig(setCharacterBinding(config, {
             ...binding,
             defaults: { ...binding.defaults, apiConfigId: apiConfigId || undefined },
+        }));
+    }, [config, persistConfig, scope, selectedCharId]);
+
+    // Quick switch of "who I am": global default identity, or the identity bound on a character.
+    const updateUserIdentity = useCallback((userIdentityId: string | undefined) => {
+        if (scope === "global") {
+            persistConfig({ ...config, globalDefaults: { ...config.globalDefaults, userIdentityId: userIdentityId || undefined } });
+            return;
+        }
+        if (!selectedCharId) return;
+        const binding = getCharacterBinding(config, selectedCharId);
+        persistConfig(setCharacterBinding(config, {
+            ...binding,
+            defaults: { ...binding.defaults, userIdentityId: userIdentityId || undefined },
         }));
     }, [config, persistConfig, scope, selectedCharId]);
 
@@ -385,6 +403,12 @@ export function QuickActionFloat() {
         : inheritedApiName
             ? `继承全局：${inheritedApiName}`
             : "继承全局";
+    const inheritedIdentityName = itemName(identities, config.globalDefaults.userIdentityId) || identities[0]?.name || "";
+    const inheritIdentityLabel = scope === "global"
+        ? (identities[0]?.name ? `未设置（默认：${identities[0].name}）` : "未设置")
+        : inheritedIdentityName
+            ? `继承全局：${inheritedIdentityName}`
+            : "继承全局";
     const inheritWorldBookLabel = scope === "global"
         ? "未设置"
         : inheritedWorldBookNames.length > 0
@@ -511,6 +535,40 @@ export function QuickActionFloat() {
                                 </div>
                             </label>
                         ) : null}
+
+                        <section className="quick-action-section" data-disabled={characterDisabled ? "" : undefined}>
+                            <div className="quick-action-section-heading">
+                                <span><UserRound size={16} />我的身份</span>
+                                {currentSlot.userIdentityId ? <small>{itemName(identities, currentSlot.userIdentityId)}</small> : <small>{scope === "global" ? "未设置" : "继承"}</small>}
+                            </div>
+                            <div className="quick-action-option-list">
+                                <button
+                                    type="button"
+                                    className="quick-action-option"
+                                    data-selected={!currentSlot.userIdentityId}
+                                    disabled={characterDisabled}
+                                    onClick={() => updateUserIdentity(undefined)}
+                                >
+                                    <span>{inheritIdentityLabel}</span>
+                                    {!currentSlot.userIdentityId ? <Check size={15} /> : null}
+                                </button>
+                                {identities.length === 0 ? (
+                                    <div className="quick-action-empty">暂无用户身份</div>
+                                ) : identities.map(identity => (
+                                    <button
+                                        type="button"
+                                        key={identity.id}
+                                        className="quick-action-option"
+                                        data-selected={currentSlot.userIdentityId === identity.id}
+                                        disabled={characterDisabled}
+                                        onClick={() => updateUserIdentity(identity.id)}
+                                    >
+                                        <span>{identity.name || "未命名身份"}</span>
+                                        {currentSlot.userIdentityId === identity.id ? <Check size={15} /> : null}
+                                    </button>
+                                ))}
+                            </div>
+                        </section>
 
                         <section className="quick-action-section" data-disabled={characterDisabled ? "" : undefined}>
                             <div className="quick-action-section-heading">
