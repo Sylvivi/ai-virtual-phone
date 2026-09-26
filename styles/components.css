@@ -5785,3 +5785,12 @@
   gap: 6px;
   padding: 0 10px 8px;
 }
+
+/* 点引用跳到原文后，原文闪一下 */
+.chat-quote-flash {
+  animation: chat-quote-flash 1.8s ease-out;
+}
+@keyframes chat-quote-flash {
+  0%, 30% { box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.75); }
+  100% { box-shadow: 0 0 0 3px rgba(255, 196, 0, 0); }
+}

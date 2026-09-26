@@ -2037,6 +2037,54 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // 流式预览增量更新时跟随滚动到底：仅在用户本来就停在底部附近时跟随，
     // 用户上翻历史/查看旧消息时绝不拽回底部（否则长回复生成中根本无法阅读）。
     const isNearBottomRef = useRef(true);
+    // Quote jump: tapping a quote preview scrolls to the quoted message.
+    // Quotes only store the first ~50 chars of the original (mediaData.quotePreview), no message id,
+    // so we match by leading text, searching backwards from the quoting message. If the target is
+    // older than what's rendered, reveal enough history first, then scroll and flash it.
+    useEffect(() => {
+        const norm = (s: unknown) => (typeof s === "string" ? s : "").replace(/\s+/g, "").replace(/(\.{3}|…)+$/, "");
+        const onJump = (e: Event) => {
+            const detail = (e as CustomEvent<{ sessionId?: string; preview?: string; fromId?: string }>).detail || {};
+            if (detail.sessionId && detail.sessionId !== session.id) return;
+            const want = norm(detail.preview);
+            if (!want) return;
+            const all = loadChatMessages(session.id);
+            const fromIdx = detail.fromId ? all.findIndex(m => m.id === detail.fromId) : -1;
+            const head = want.slice(0, Math.min(want.length, 20));
+            let targetIdx = -1;
+            for (let i = (fromIdx > 0 ? fromIdx : all.length) - 1; i >= 0; i--) {
+                const text = norm(all[i]?.content);
+                if (!text) continue;
+                if (text.startsWith(want) || want.startsWith(text) || (head.length >= 6 && text.includes(head))) { targetIdx = i; break; }
+            }
+            if (targetIdx < 0) { showChatToast("没找到原文"); return; }
+            const target = all[targetIdx];
+            const needed = all.length - targetIdx;
+            if (visibleMessagesRef.current.length < needed) {
+                const count = Math.min(all.length, needed + 5);
+                const next = all.slice(-count);
+                initialScrollVersionRef.current += 1;
+                visibleMessagesRef.current = next;
+                hasMoreRef.current = count < all.length;
+                setHasMore(count < all.length);
+                setMessages(next);
+            }
+            let tries = 0;
+            const tryScroll = () => {
+                const el = scrollRef.current?.querySelector(`[data-msg-id="${CSS.escape(target.id)}"]`) as HTMLElement | null;
+                if (!el) { if (++tries < 20) window.setTimeout(tryScroll, 60); return; }
+                el.scrollIntoView({ block: "center", behavior: "smooth" });
+                el.classList.remove("chat-quote-flash");
+                void el.offsetWidth;
+                el.classList.add("chat-quote-flash");
+                window.setTimeout(() => el.classList.remove("chat-quote-flash"), 1800);
+            };
+            window.setTimeout(tryScroll, 30);
+        };
+        window.addEventListener("chat-quote-jump", onJump);
+        return () => window.removeEventListener("chat-quote-jump", onJump);
+    }, [session.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
