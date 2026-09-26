@@ -1198,6 +1198,27 @@ export function resolveUserIdentity(characterId?: string, appId?: string): UserI
     return identities[0];
 }
 
+/**
+ * Group chats: honour the user identity bound on member characters.
+ * Previously group chats only read the global "group_chat" binding, so an identity chosen
+ * under a character's own group_chat / default binding was shown in the UI but never used.
+ * Order: first member whose resolved identity differs from the global group one → global.
+ */
+export function resolveGroupUserIdentity(participantIds?: string[] | null): UserIdentity | null {
+    const identities = loadUserIdentities();
+    if (identities.length === 0) return null;
+    const config = loadBindingConfig();
+    const globalId = resolveBinding(config, undefined, "group_chat").userIdentityId;
+    for (const charId of participantIds || []) {
+        const memberId = resolveBinding(config, charId, "group_chat").userIdentityId;
+        if (memberId && memberId !== globalId) {
+            const hit = identities.find(i => i.id === memberId);
+            if (hit) return hit;
+        }
+    }
+    return resolveUserIdentity(undefined, "group_chat");
+}
+
 // --- Migration from legacy CharacterSettingsOverride ---
 
 function migrateLegacyOverrides(): BindingConfig | null {
