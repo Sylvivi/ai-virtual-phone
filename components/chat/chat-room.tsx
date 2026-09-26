@@ -2037,6 +2037,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // 流式预览增量更新时跟随滚动到底：仅在用户本来就停在底部附近时跟随，
     // 用户上翻历史/查看旧消息时绝不拽回底部（否则长回复生成中根本无法阅读）。
     const isNearBottomRef = useRef(true);
+    // Latest rendered messages (ids here match the DOM; freshly generated replies can carry
+    // temporary ids that differ from storage until the chat is reopened).
+    const renderedMessagesRef = useRef<ChatMessage[]>([]);
+    renderedMessagesRef.current = messages;
     // Quote jump: tapping a quote preview scrolls to the quoted message.
     // Quotes only store the first ~50 chars of the original (mediaData.quotePreview), no message id,
     // so we match by leading text, searching backwards from the quoting message. If the target is
@@ -2048,19 +2052,27 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             if (detail.sessionId && detail.sessionId !== session.id) return;
             const want = norm(detail.preview);
             if (!want) return;
-            const all = loadChatMessages(session.id);
-            const fromIdx = detail.fromId ? all.findIndex(m => m.id === detail.fromId) : -1;
             const head = want.slice(0, Math.min(want.length, 20));
-            let targetIdx = -1;
-            for (let i = (fromIdx > 0 ? fromIdx : all.length) - 1; i >= 0; i--) {
-                const text = norm(all[i]?.content);
-                if (!text) continue;
-                if (text.startsWith(want) || want.startsWith(text) || (head.length >= 6 && text.includes(head))) { targetIdx = i; break; }
-            }
-            if (targetIdx < 0) { showChatToast("没找到原文"); return; }
-            const target = all[targetIdx];
-            const needed = all.length - targetIdx;
-            if (visibleMessagesRef.current.length < needed) {
+            const matches = (m?: ChatMessage) => {
+                const text = norm(m?.content);
+                return !!text && (text.startsWith(want) || want.startsWith(text) || (head.length >= 6 && text.includes(head)));
+            };
+            const findBack = (list: ChatMessage[]) => {
+                const fromIdx = detail.fromId ? list.findIndex(m => m.id === detail.fromId) : -1;
+                for (let i = (fromIdx > 0 ? fromIdx : list.length) - 1; i >= 0; i--) if (matches(list[i])) return i;
+                return -1;
+            };
+            // 1) what's on screen right now (ids match the DOM)
+            const shown = renderedMessagesRef.current;
+            const shownIdx = findBack(shown);
+            let target: ChatMessage | undefined = shownIdx >= 0 ? shown[shownIdx] : undefined;
+            // 2) older history from storage
+            const all = target ? [] : loadChatMessages(session.id);
+            const targetIdx = target ? -1 : findBack(all);
+            if (!target && targetIdx < 0) { showChatToast("没找到原文"); return; }
+            if (!target) target = all[targetIdx];
+            const needed = target && targetIdx >= 0 ? all.length - targetIdx : 0;
+            if (needed > 0 && shown.length < needed) {
                 const count = Math.min(all.length, needed + 5);
                 const next = all.slice(-count);
                 initialScrollVersionRef.current += 1;
@@ -2071,7 +2083,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             }
             let tries = 0;
             const tryScroll = () => {
-                const el = scrollRef.current?.querySelector(`[data-msg-id="${CSS.escape(target.id)}"]`) as HTMLElement | null;
+                const el = scrollRef.current?.querySelector(`[data-msg-id="${CSS.escape(target!.id)}"]`) as HTMLElement | null;
                 if (!el) { if (++tries < 20) window.setTimeout(tryScroll, 60); return; }
                 el.scrollIntoView({ block: "center", behavior: "smooth" });
                 el.classList.remove("chat-quote-flash");
